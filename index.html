@@ -338,18 +338,39 @@
     }
 
     input[type="file"]{ display:none; }
-  </style>
+  .header-logo {
+    margin-left: auto;
+    height: 44px;
+    width: auto;
+    object-fit: contain;
+}
+
+@media (max-width: 768px) {
+    .header-logo {
+        height: 32px;
+    }
+}
+</style>
 </head>
 
 <body>
   <!-- Professional Header -->
   <div class="app-header">
     <div class="header-content">
-      <div class="logo-icon">☀️</div>
-      <div class="header-title">
+      <div style="display:flex; align-items:center; gap:16px;">
+    <div class="logo-icon">☀️</div>
+    <div class="header-title">
         <h1>Solar Site Survey</h1>
         <span class="subtitle">Indigenized Energy</span>
-      </div>
+    </div>
+</div>
+
+<img
+    src="images/IE_Logo-.png"
+    alt="Indigenized Energy logo"
+    class="header-logo"
+/>
+
     </div>
   </div>
 
