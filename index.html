@@ -868,564 +868,685 @@
     </div>
   </div>
 
-  <script>
-    // Initialize survey date
-    document.getElementById('survey-date').value = new Date().toLocaleDateString();
+ <script>
+// ============================================
+// IndexedDB Helper (replaces localStorage)
+// ============================================
+const DB_NAME = 'SolarSurvey_Database';
+const DB_VERSION = 1;
+const STORE_NAME = 'progress';
 
-    // Connectivity / Offline-first status (ADDED)
-    function updateConnectivityStatus() {
-      const statusEl = document.getElementById('connectivity-status');
-      const noteEl = document.getElementById('connectivity-note');
-      if (!statusEl || !noteEl) return;
+let db = null;
 
-      const online = navigator.onLine;
-      statusEl.textContent = online ? 'Online' : 'Offline';
-      statusEl.className = online ? 'status-good' : 'status-warning';
-      noteEl.textContent = online
-        ? 'You can still work offline. Downloads work either way.'
-        : 'You are offline. Data will stay on-device until you export/share.';
-    }
-
-    window.addEventListener('online', updateConnectivityStatus);
-    window.addEventListener('offline', updateConnectivityStatus);
-
-    // GPS Capture
-    function captureGPS() {
-      if (navigator.geolocation) {
-        document.getElementById('gps-coords').value = 'Getting location...';
-        navigator.geolocation.getCurrentPosition(
-          function(position) {
-            const lat = position.coords.latitude.toFixed(6);
-            const lon = position.coords.longitude.toFixed(6);
-            document.getElementById('gps-coords').value = `${lat}, ${lon}`;
-            updateProgress();
-          },
-          function() {
-            alert('Unable to get GPS location. Please enable location services.');
-            document.getElementById('gps-coords').value = '';
-          }
-        );
-      } else {
-        alert('GPS not supported on this device');
-      }
-    }
-
-    // System Size Calculator (kept; corrected shading id usage inside)
-    function calculateSystemSize() {
-      const panelAmps = parseInt(document.getElementById('panel-amperage').value) || 0;
-      if (panelAmps === 0) {
-        alert('Please select Panel Amperage first to calculate system size');
-        return;
-      }
-
-      let baseSize = 0;
-      if (panelAmps <= 100) baseSize = 4.0;
-      else if (panelAmps <= 150) baseSize = 6.0;
-      else if (panelAmps <= 200) baseSize = 8.0;
-      else baseSize = 12.0;
-
-      let totalSpace = 0;
-
-      const numRoofPlanes = parseInt(document.getElementById('num-roof-planes')?.value) || 0;
-      if (numRoofPlanes > 0) {
-        for (let i = 1; i <= numRoofPlanes; i++) {
-          const sizeInput = document.getElementById(`plane-${i}-size`)?.value || '';
-          const direction = document.getElementById(`plane-${i}-direction`)?.value || '';
-
-          let sqft = 0;
-          if (sizeInput.includes('x')) {
-            const parts = sizeInput.toLowerCase().replace(/ft/g, '').split('x');
-            if (parts.length === 2) {
-              const width = parseFloat(parts[0].trim()) || 0;
-              const length = parseFloat(parts[1].trim()) || 0;
-              sqft = width * length;
-            }
-          } else {
-            sqft = parseFloat(sizeInput.replace(/[^0-9.]/g, '')) || 0;
-          }
-
-          let dirMultiplier = 1.0;
-          if (direction === 'south') dirMultiplier = 1.0;
-          else if (direction === 'southwest' || direction === 'southeast') dirMultiplier = 0.92;
-          else if (direction === 'east' || direction === 'west') dirMultiplier = 0.78;
-          else if (direction === 'north') dirMultiplier = 0.5;
-
-          totalSpace += sqft * dirMultiplier;
-        }
-      }
-
-      const groundSize = document.getElementById('ground-size')?.value || '';
-      if (groundSize) {
-        let groundSqft = 0;
-        if (groundSize.includes('x')) {
-          const parts = groundSize.toLowerCase().replace(/ft/g, '').split('x');
-          if (parts.length === 2) {
-            const width = parseFloat(parts[0].trim()) || 0;
-            const length = parseFloat(parts[1].trim()) || 0;
-            groundSqft = width * length;
-          }
-        } else {
-          groundSqft = parseFloat(groundSize.replace(/[^0-9.]/g, '')) || 0;
-        }
-
-        const groundDir = document.getElementById('ground-direction')?.value || '';
-        let groundDirMult = 1.0;
-        if (groundDir === 'south') groundDirMult = 1.0;
-        else if (groundDir === 'southwest' || groundDir === 'southeast') groundDirMult = 0.92;
-        else if (groundDir === 'east' || groundDir === 'west') groundDirMult = 0.78;
-        else if (groundDir === 'north') groundDirMult = 0.5;
-
-        totalSpace += groundSqft * groundDirMult;
-      }
-
-      const spaceBasedSize = totalSpace / 100;
-
-      const shading = document.getElementById('shading-percent')?.value || '';
-      let shadingMultiplier = 1.0;
-      if (shading === '0-10') shadingMultiplier = 1.0;
-      else if (shading === '10-25') shadingMultiplier = 0.9;
-      else if (shading === '25-50') shadingMultiplier = 0.75;
-      else if (shading === '50+') shadingMultiplier = 0.6;
-
-      let suggestedSize = Math.min(baseSize, spaceBasedSize || baseSize);
-      suggestedSize = suggestedSize * shadingMultiplier;
-      suggestedSize = Math.round(suggestedSize * 2) / 2;
-      suggestedSize = Math.max(3.0, suggestedSize);
-
-      let explanation = `Suggested System Size: ${suggestedSize} kW\n\n`;
-      explanation += `CALCULATION BREAKDOWN:\n`;
-      explanation += `• Panel Capacity: ${panelAmps}A → ${baseSize} kW max\n`;
-      if (totalSpace > 0) explanation += `• Available Space: ${Math.round(totalSpace)} sq ft → ${spaceBasedSize.toFixed(1)} kW potential\n`;
-      if (shading && shading !== '0-10') explanation += `• Shading Impact: ${shading} → ${(shadingMultiplier * 100).toFixed(0)}% efficiency\n`;
-      explanation += `\nYou can adjust this number based on site needs.`;
-
-      document.getElementById('system-size').value = suggestedSize;
-      alert(explanation);
-      updateProgress();
-    }
-
-    // Battery toggle
-    document.getElementById('battery-included').addEventListener('change', function() {
-      const batteryGroup = document.getElementById('battery-size-group');
-      if (this.value === 'yes') batteryGroup.style.display = 'block';
-      else {
-        batteryGroup.style.display = 'none';
-        document.getElementById('battery-size').value = '';
-      }
-      updateProgress();
-    });
-
-    // Mount type toggle
-    function toggleMountSection(type) {
-      const roofSection = document.getElementById('roof-mount-section');
-      const groundSection = document.getElementById('ground-mount-section');
-      const roofGeneralInfo = document.getElementById('roof-general-info');
-      const roofCheck = document.getElementById('mount-roof');
-      const groundCheck = document.getElementById('mount-ground');
-
-      if (type === 'roof') {
-        roofSection.style.display = roofCheck.checked ? 'block' : 'none';
-        roofGeneralInfo.style.display = roofCheck.checked ? 'block' : 'none';
-      } else if (type === 'ground') {
-        groundSection.style.display = groundCheck.checked ? 'block' : 'none';
-      }
-      updateProgress();
-    }
-
-    // Generate roof plane inputs
-    function generateRoofPlanes() {
-      const num = parseInt(document.getElementById('num-roof-planes').value);
-      const container = document.getElementById('roof-planes-container');
-      container.innerHTML = '';
-      if (!num) return;
-
-      for (let i = 1; i <= num; i++) {
-        const planeDiv = document.createElement('div');
-        planeDiv.style.cssText = 'background:#FFF8DC; padding:15px; margin:15px 0; border-radius:10px; border:2px solid #D2691E;';
-        planeDiv.innerHTML = `
-          <h4 style="color:#8B4513; margin-bottom:10px;">Mounting Plane ${i}</h4>
-
-          <div class="form-group">
-            <label>Direction/Orientation *</label>
-            <select id="plane-${i}-direction">
-              <option value="">Select direction</option>
-              <option value="south">South (Best - 100%)</option>
-              <option value="southwest">Southwest (Good - 90-95%)</option>
-              <option value="southeast">Southeast (Good - 90-95%)</option>
-              <option value="east">East (OK - 75-80%)</option>
-              <option value="west">West (OK - 75-80%)</option>
-              <option value="north">North (Avoid - Poor)</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label>Approximate Size *</label>
-            <input type="text" id="plane-${i}-size" placeholder="e.g., 25ft x 15ft or 375 sq ft">
-            <small>Length x Width or total square feet</small>
-          </div>
-
-          <div class="form-group">
-            <label>Pitch/Slope</label>
-            <select id="plane-${i}-pitch">
-              <option value="">Select pitch</option>
-              <option value="flat">Flat (0-2/12)</option>
-              <option value="low">Low (3-4/12)</option>
-              <option value="medium">Medium (5-7/12)</option>
-              <option value="steep">Steep (8-12/12)</option>
-              <option value="very-steep">Very Steep (&gt;12/12)</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label>Notes for MP ${i}</label>
-            <textarea id="plane-${i}-notes" placeholder="Obstructions, shading, concerns..." style="min-height:60px;"></textarea>
-          </div>
-        `;
-        container.appendChild(planeDiv);
-      }
-      updateProgress();
-    }
-
-    // Photo storage
-    const photos = {
-      'roof-mounting': [],
-      'ground-mount': [],
-      'main-panel': [],
-      'panel-label': [],
-      'grounding': [],
-      'shading': [],
-      'attic': [],
-      'meter': [],
-      'overview': []
+// Initialize IndexedDB
+function initDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      db = request.result;
+      resolve(db);
     };
+    
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      }
+    };
+  });
+}
 
-    // Toggle section
-    function toggleSection(sectionId) {
-      const content = document.getElementById('content-' + sectionId);
-      content.classList.toggle('active');
+// Save to IndexedDB
+async function saveToIndexedDB(key, value) {
+  if (!db) await initDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.put({ id: key, data: value });
+    request.onsuccess = () => resolve(true);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// Load from IndexedDB
+async function loadFromIndexedDB(key) {
+  if (!db) await initDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_NAME], 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.get(key);
+    request.onsuccess = () => resolve(request.result ? request.result.data : null);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// Delete from IndexedDB
+async function deleteFromIndexedDB(key) {
+  if (!db) await initDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.delete(key);
+    request.onsuccess = () => resolve(true);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// ============================================
+// Helper Functions
+// ============================================
+
+// Count total photos
+function getTotalPhotoCount() {
+  let total = 0;
+  for (let type in photos) {
+    total += (photos[type] || []).length;
+  }
+  return total;
+}
+
+// Update connectivity status with photo warnings
+function updateConnectivityStatus() {
+  const statusEl = document.getElementById('connectivity-status');
+  const noteEl = document.getElementById('connectivity-note');
+  if (!statusEl || !noteEl) return;
+
+  const online = navigator.onLine;
+  const photoCount = getTotalPhotoCount();
+  
+  // Connectivity status
+  statusEl.textContent = online ? 'Online' : 'Offline';
+  statusEl.className = online ? 'status-good' : 'status-warning';
+  
+  // Smart warnings based on photo count
+  if (photoCount === 0) {
+    noteEl.innerHTML = online
+      ? 'You can work offline. Downloads work either way.'
+      : 'Offline mode active. Data stays on-device until export.';
+  } else if (photoCount < 20) {
+    noteEl.innerHTML = `<strong>${photoCount} photo${photoCount !== 1 ? 's' : ''} captured.</strong> Looking good! 👍`;
+  } else if (photoCount < 30) {
+    noteEl.innerHTML = `<strong style="color: var(--warning);">${photoCount} photos captured.</strong> ⚠️ Consider exporting soon.`;
+  } else {
+    noteEl.innerHTML = `<strong style="color: #C62828;">${photoCount} photos!</strong> 🚨 Export report now to avoid data loss.`;
+  }
+}
+
+// ============================================
+// Initialize on page load
+// ============================================
+window.addEventListener('load', async function() {
+  // Initialize IndexedDB
+  await initDB();
+  
+  // Initialize survey date
+  document.getElementById('survey-date').value = new Date().toLocaleDateString();
+  
+  updateConnectivityStatus();
+  
+  // Ready-for-upload timestamp
+  const readyBox = document.getElementById('ready-for-upload');
+  const readyTs = document.getElementById('ready-timestamp');
+  if (readyBox && readyTs) {
+    const savedReady = await loadFromIndexedDB('solarSurveyReadyTimestamp');
+    if (savedReady) {
+      readyTs.textContent = 'Marked ready on: ' + new Date(savedReady).toLocaleString();
+      readyBox.checked = true;
+    }
+    readyBox.addEventListener('change', async () => {
+      if (readyBox.checked) {
+        const ts = new Date().toISOString();
+        await saveToIndexedDB('solarSurveyReadyTimestamp', ts);
+        readyTs.textContent = 'Marked ready on: ' + new Date(ts).toLocaleString();
+      } else {
+        await deleteFromIndexedDB('solarSurveyReadyTimestamp');
+        readyTs.textContent = '';
+      }
+    });
+  }
+  
+  // Try to load saved progress
+  const saved = await loadFromIndexedDB('solarSurvey');
+  if (saved && confirm('Found saved progress. Would you like to restore it?')) {
+    await loadProgress();
+  }
+  
+  updateProgress();
+});
+
+// Online/offline listeners
+window.addEventListener('online', updateConnectivityStatus);
+window.addEventListener('offline', updateConnectivityStatus);
+
+// ============================================
+// Photo Storage
+// ============================================
+const photos = {
+  'roof-mounting': [],
+  'ground-mount': [],
+  'main-panel': [],
+  'panel-label': [],
+  'grounding': [],
+  'shading': [],
+  'attic': [],
+  'meter': [],
+  'overview': []
+};
+
+// ============================================
+// GPS Capture
+// ============================================
+function captureGPS() {
+  if (navigator.geolocation) {
+    document.getElementById('gps-coords').value = 'Getting location...';
+    navigator.geolocation.getCurrentPosition(
+      function(position) {
+        const lat = position.coords.latitude.toFixed(6);
+        const lon = position.coords.longitude.toFixed(6);
+        document.getElementById('gps-coords').value = `${lat}, ${lon}`;
+        updateProgress();
+      },
+      function() {
+        alert('Unable to get GPS location. Please enable location services.');
+        document.getElementById('gps-coords').value = '';
+      }
+    );
+  } else {
+    alert('GPS not supported on this device');
+  }
+}
+
+// ============================================
+// System Size Calculator
+// ============================================
+function calculateSystemSize() {
+  const panelAmps = parseInt(document.getElementById('panel-amperage').value) || 0;
+  if (panelAmps === 0) {
+    alert('Please select Panel Amperage first to calculate system size');
+    return;
+  }
+
+  let baseSize = 0;
+  if (panelAmps <= 100) baseSize = 4.0;
+  else if (panelAmps <= 150) baseSize = 6.0;
+  else if (panelAmps <= 200) baseSize = 8.0;
+  else baseSize = 12.0;
+
+  let totalSpace = 0;
+
+  const numRoofPlanes = parseInt(document.getElementById('num-roof-planes')?.value) || 0;
+  if (numRoofPlanes > 0) {
+    for (let i = 1; i <= numRoofPlanes; i++) {
+      const sizeInput = document.getElementById(`plane-${i}-size`)?.value || '';
+      const direction = document.getElementById(`plane-${i}-direction`)?.value || '';
+
+      let sqft = 0;
+      if (sizeInput.includes('x')) {
+        const parts = sizeInput.toLowerCase().replace(/ft/g, '').split('x');
+        if (parts.length === 2) {
+          const width = parseFloat(parts[0].trim()) || 0;
+          const length = parseFloat(parts[1].trim()) || 0;
+          sqft = width * length;
+        }
+      } else {
+        sqft = parseFloat(sizeInput.replace(/[^0-9.]/g, '')) || 0;
+      }
+
+      let dirMultiplier = 1.0;
+      if (direction === 'south') dirMultiplier = 1.0;
+      else if (direction === 'southwest' || direction === 'southeast') dirMultiplier = 0.92;
+      else if (direction === 'east' || direction === 'west') dirMultiplier = 0.78;
+      else if (direction === 'north') dirMultiplier = 0.5;
+
+      totalSpace += sqft * dirMultiplier;
+    }
+  }
+
+  const groundSize = document.getElementById('ground-size')?.value || '';
+  if (groundSize) {
+    let groundSqft = 0;
+    if (groundSize.includes('x')) {
+      const parts = groundSize.toLowerCase().replace(/ft/g, '').split('x');
+      if (parts.length === 2) {
+        const width = parseFloat(parts[0].trim()) || 0;
+        const length = parseFloat(parts[1].trim()) || 0;
+        groundSqft = width * length;
+      }
+    } else {
+      groundSqft = parseFloat(groundSize.replace(/[^0-9.]/g, '')) || 0;
     }
 
-    // Capture photo
-    function capturePhoto(type) {
-      document.getElementById(type + '-input').click();
-    }
+    const groundDir = document.getElementById('ground-direction')?.value || '';
+    let groundDirMult = 1.0;
+    if (groundDir === 'south') groundDirMult = 1.0;
+    else if (groundDir === 'southwest' || groundDir === 'southeast') groundDirMult = 0.92;
+    else if (groundDir === 'east' || groundDir === 'west') groundDirMult = 0.78;
+    else if (groundDir === 'north') groundDirMult = 0.5;
 
-    // Handle photo upload
-    function handlePhotoUpload(event, type) {
-      const files = event.target.files;
-      if (!files || files.length === 0) return;
+    totalSpace += groundSqft * groundDirMult;
+  }
 
-      Array.from(files).forEach(file => {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-          photos[type].push({
-            data: e.target.result,
-            name: file.name,
-            timestamp: new Date().toISOString()
-          });
-          displayPhotos(type);
-          updateProgress();
-        };
-        reader.readAsDataURL(file);
+  const spaceBasedSize = totalSpace / 100;
+
+  const shading = document.getElementById('shading-percent')?.value || '';
+  let shadingMultiplier = 1.0;
+  if (shading === '0-10') shadingMultiplier = 1.0;
+  else if (shading === '10-25') shadingMultiplier = 0.9;
+  else if (shading === '25-50') shadingMultiplier = 0.75;
+  else if (shading === '50+') shadingMultiplier = 0.6;
+
+  let suggestedSize = Math.min(baseSize, spaceBasedSize || baseSize);
+  suggestedSize = suggestedSize * shadingMultiplier;
+  suggestedSize = Math.round(suggestedSize * 2) / 2;
+  suggestedSize = Math.max(3.0, suggestedSize);
+
+  let explanation = `Suggested System Size: ${suggestedSize} kW\n\n`;
+  explanation += `CALCULATION BREAKDOWN:\n`;
+  explanation += `• Panel Capacity: ${panelAmps}A → ${baseSize} kW max\n`;
+  if (totalSpace > 0) explanation += `• Available Space: ${Math.round(totalSpace)} sq ft → ${spaceBasedSize.toFixed(1)} kW potential\n`;
+  if (shading && shading !== '0-10') explanation += `• Shading Impact: ${shading} → ${(shadingMultiplier * 100).toFixed(0)}% efficiency\n`;
+  explanation += `\nYou can adjust this number based on site needs.`;
+
+  document.getElementById('system-size').value = suggestedSize;
+  alert(explanation);
+  updateProgress();
+}
+
+// ============================================
+// Battery Toggle
+// ============================================
+document.getElementById('battery-included').addEventListener('change', function() {
+  const batteryGroup = document.getElementById('battery-size-group');
+  if (this.value === 'yes') batteryGroup.style.display = 'block';
+  else {
+    batteryGroup.style.display = 'none';
+    document.getElementById('battery-size').value = '';
+  }
+  updateProgress();
+});
+
+// ============================================
+// Mount Type Toggle
+// ============================================
+function toggleMountSection(type) {
+  const roofSection = document.getElementById('roof-mount-section');
+  const groundSection = document.getElementById('ground-mount-section');
+  const roofGeneralInfo = document.getElementById('roof-general-info');
+  const roofCheck = document.getElementById('mount-roof');
+  const groundCheck = document.getElementById('mount-ground');
+
+  if (type === 'roof') {
+    roofSection.style.display = roofCheck.checked ? 'block' : 'none';
+    roofGeneralInfo.style.display = roofCheck.checked ? 'block' : 'none';
+  } else if (type === 'ground') {
+    groundSection.style.display = groundCheck.checked ? 'block' : 'none';
+  }
+  updateProgress();
+}
+
+// ============================================
+// Generate Roof Planes
+// ============================================
+function generateRoofPlanes() {
+  const num = parseInt(document.getElementById('num-roof-planes').value);
+  const container = document.getElementById('roof-planes-container');
+  container.innerHTML = '';
+  if (!num) return;
+
+  for (let i = 1; i <= num; i++) {
+    const planeDiv = document.createElement('div');
+    planeDiv.style.cssText = 'background:#FFF8DC; padding:15px; margin:15px 0; border-radius:10px; border:2px solid #D2691E;';
+    planeDiv.innerHTML = `
+      <h4 style="color:#8B4513; margin-bottom:10px;">Mounting Plane ${i}</h4>
+
+      <div class="form-group">
+        <label>Direction/Orientation *</label>
+        <select id="plane-${i}-direction">
+          <option value="">Select direction</option>
+          <option value="south">South (Best - 100%)</option>
+          <option value="southwest">Southwest (Good - 90-95%)</option>
+          <option value="southeast">Southeast (Good - 90-95%)</option>
+          <option value="east">East (OK - 75-80%)</option>
+          <option value="west">West (OK - 75-80%)</option>
+          <option value="north">North (Avoid - Poor)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Approximate Size *</label>
+        <input type="text" id="plane-${i}-size" placeholder="e.g., 25ft x 15ft or 375 sq ft">
+        <small>Length x Width or total square feet</small>
+      </div>
+
+      <div class="form-group">
+        <label>Pitch/Slope</label>
+        <select id="plane-${i}-pitch">
+          <option value="">Select pitch</option>
+          <option value="flat">Flat (0-2/12)</option>
+          <option value="low">Low (3-4/12)</option>
+          <option value="medium">Medium (5-7/12)</option>
+          <option value="steep">Steep (8-12/12)</option>
+          <option value="very-steep">Very Steep (&gt;12/12)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Notes for MP ${i}</label>
+        <textarea id="plane-${i}-notes" placeholder="Obstructions, shading, concerns..." style="min-height:60px;"></textarea>
+      </div>
+    `;
+    container.appendChild(planeDiv);
+  }
+  updateProgress();
+}
+
+// ============================================
+// UI Functions
+// ============================================
+function toggleSection(sectionId) {
+  const content = document.getElementById('content-' + sectionId);
+  content.classList.toggle('active');
+}
+
+function capturePhoto(type) {
+  document.getElementById(type + '-input').click();
+}
+
+// ============================================
+// Photo Handling
+// ============================================
+function handlePhotoUpload(event, type) {
+  const files = event.target.files;
+  if (!files || files.length === 0) return;
+
+  Array.from(files).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      photos[type].push({
+        data: e.target.result,
+        name: file.name,
+        timestamp: new Date().toISOString()
       });
-    }
-
-    // Display photos
-    function displayPhotos(type) {
-      const gallery = document.getElementById(type + '-gallery');
-      gallery.innerHTML = '';
-
-      photos[type].forEach((photo, index) => {
-        const item = document.createElement('div');
-        item.className = 'photo-item';
-        item.innerHTML = `
-          <img src="${photo.data}" alt="Photo ${index + 1}">
-          <button class="photo-delete" onclick="deletePhoto('${type}', ${index})">×</button>
-        `;
-        gallery.appendChild(item);
-      });
-    }
-
-    // Delete photo
-    function deletePhoto(type, index) {
-      photos[type].splice(index, 1);
       displayPhotos(type);
       updateProgress();
-    }
+      updateConnectivityStatus(); // Update photo count warning
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
-    // Update progress (kept as your section-based logic)
-    function updateProgress() {
-      let completed = 0;
-      let total = 5; // Number of main sections in your progress logic
+function displayPhotos(type) {
+  const gallery = document.getElementById(type + '-gallery');
+  if (!gallery) return;
+  
+  gallery.innerHTML = '';
 
-      // Site info
-      if (document.getElementById('site-name').value &&
-          document.getElementById('tribal-affiliation').value &&
-          document.getElementById('site-address').value &&
-          document.getElementById('surveyor-name').value) {
-        completed++;
-        document.getElementById('status-site-info').textContent = 'Complete';
-        document.getElementById('status-site-info').classList.add('complete');
-      } else {
-        document.getElementById('status-site-info').textContent = 'Incomplete';
-        document.getElementById('status-site-info').classList.remove('complete');
-      }
+  photos[type].forEach((photo, index) => {
+    const item = document.createElement('div');
+    item.className = 'photo-item';
+    item.innerHTML = `
+      <img src="${photo.data}" alt="Photo ${index + 1}">
+      <button class="photo-delete" onclick="deletePhoto('${type}', ${index})">×</button>
+    `;
+    gallery.appendChild(item);
+  });
+}
 
-      // Roof info (simple)
-      const roofChecked = document.getElementById('mount-roof').checked;
-      const groundChecked = document.getElementById('mount-ground').checked;
-      if ((roofChecked || groundChecked) && (!roofChecked || document.getElementById('roof-type').value)) {
-        completed++;
-        document.getElementById('status-roof-info').textContent = 'Complete';
-        document.getElementById('status-roof-info').classList.add('complete');
-      } else {
-        document.getElementById('status-roof-info').textContent = 'Incomplete';
-        document.getElementById('status-roof-info').classList.remove('complete');
-      }
+function deletePhoto(type, index) {
+  photos[type].splice(index, 1);
+  displayPhotos(type);
+  updateProgress();
+  updateConnectivityStatus(); // Update photo count warning
+}
 
-      // Electrical info
-      if (photos['main-panel'].length > 0 && document.getElementById('panel-amperage').value) {
-        completed++;
-        document.getElementById('status-electrical-info').textContent = 'Complete';
-        document.getElementById('status-electrical-info').classList.add('complete');
-      } else {
-        document.getElementById('status-electrical-info').textContent = 'Incomplete';
-        document.getElementById('status-electrical-info').classList.remove('complete');
-      }
+// ============================================
+// Progress Tracking
+// ============================================
+function updateProgress() {
+  let completed = 0;
+  let total = 5;
 
-      // Shading info
-      if (photos['shading'].length > 0) {
-        completed++;
-        document.getElementById('status-shading-info').textContent = 'Complete';
-        document.getElementById('status-shading-info').classList.add('complete');
-      } else {
-        document.getElementById('status-shading-info').textContent = 'Incomplete';
-        document.getElementById('status-shading-info').classList.remove('complete');
-      }
+  // Site info
+  if (document.getElementById('site-name').value &&
+      document.getElementById('tribal-affiliation').value &&
+      document.getElementById('site-address').value &&
+      document.getElementById('surveyor-name').value) {
+    completed++;
+    document.getElementById('status-site-info').textContent = 'Complete';
+    document.getElementById('status-site-info').classList.add('complete');
+  } else {
+    document.getElementById('status-site-info').textContent = 'Incomplete';
+    document.getElementById('status-site-info').classList.remove('complete');
+  }
 
-      // Optional sections
-      if (photos['attic'].length > 0 || photos['meter'].length > 0 || photos['overview'].length > 0) {
-        document.getElementById('status-additional-photos').textContent = 'Complete';
-        document.getElementById('status-additional-photos').classList.add('complete');
-      } else {
-        document.getElementById('status-additional-photos').textContent = 'Optional';
-        document.getElementById('status-additional-photos').classList.remove('complete');
-      }
+  // Roof info
+  const roofChecked = document.getElementById('mount-roof').checked;
+  const groundChecked = document.getElementById('mount-ground').checked;
+  if ((roofChecked || groundChecked) && (!roofChecked || document.getElementById('roof-type').value)) {
+    completed++;
+    document.getElementById('status-roof-info').textContent = 'Complete';
+    document.getElementById('status-roof-info').classList.add('complete');
+  } else {
+    document.getElementById('status-roof-info').textContent = 'Incomplete';
+    document.getElementById('status-roof-info').classList.remove('complete');
+  }
 
-      if (document.getElementById('overall-assessment').value) {
-        document.getElementById('status-final-notes').textContent = 'Complete';
-        document.getElementById('status-final-notes').classList.add('complete');
-      } else {
-        document.getElementById('status-final-notes').textContent = 'Optional';
-        document.getElementById('status-final-notes').classList.remove('complete');
-      }
+  // Electrical info
+  if (photos['main-panel'].length > 0 && document.getElementById('panel-amperage').value) {
+    completed++;
+    document.getElementById('status-electrical-info').textContent = 'Complete';
+    document.getElementById('status-electrical-info').classList.add('complete');
+  } else {
+    document.getElementById('status-electrical-info').textContent = 'Incomplete';
+    document.getElementById('status-electrical-info').classList.remove('complete');
+  }
 
-      const percent = Math.round((completed / total) * 100);
-      document.getElementById('progress-fill').style.width = percent + '%';
-      document.getElementById('progress-text').textContent = percent + '%';
-    }
+  // Shading info
+  if (photos['shading'].length > 0) {
+    completed++;
+    document.getElementById('status-shading-info').textContent = 'Complete';
+    document.getElementById('status-shading-info').classList.add('complete');
+  } else {
+    document.getElementById('status-shading-info').textContent = 'Incomplete';
+    document.getElementById('status-shading-info').classList.remove('complete');
+  }
 
-    // Add event listeners to all inputs
-    document.querySelectorAll('input, select, textarea').forEach(element => {
-      element.addEventListener('change', updateProgress);
-      element.addEventListener('input', updateProgress);
+  // Optional sections
+  if (photos['attic'].length > 0 || photos['meter'].length > 0 || photos['overview'].length > 0) {
+    document.getElementById('status-additional-photos').textContent = 'Complete';
+    document.getElementById('status-additional-photos').classList.add('complete');
+  } else {
+    document.getElementById('status-additional-photos').textContent = 'Optional';
+    document.getElementById('status-additional-photos').classList.remove('complete');
+  }
+
+  if (document.getElementById('overall-assessment').value) {
+    document.getElementById('status-final-notes').textContent = 'Complete';
+    document.getElementById('status-final-notes').classList.add('complete');
+  } else {
+    document.getElementById('status-final-notes').textContent = 'Optional';
+    document.getElementById('status-final-notes').classList.remove('complete');
+  }
+
+  const percent = Math.round((completed / total) * 100);
+  document.getElementById('progress-fill').style.width = percent + '%';
+  document.getElementById('progress-text').textContent = percent + '%';
+}
+
+// Add event listeners to all inputs
+document.querySelectorAll('input, select, textarea').forEach(element => {
+  element.addEventListener('change', updateProgress);
+  element.addEventListener('input', updateProgress);
+});
+
+// ============================================
+// Save & Export Functions
+// ============================================
+async function saveProgress() {
+  const allData = { inputs: {}, photos: photos };
+
+  document.querySelectorAll('input, select, textarea').forEach(element => {
+    if (!element.id) return;
+    if (element.type === 'checkbox') allData.inputs[element.id] = element.checked;
+    else if (element.type !== 'file') allData.inputs[element.id] = element.value;
+  });
+
+  try {
+    await saveToIndexedDB('solarSurvey', allData);
+    const photoCount = getTotalPhotoCount();
+    alert(`✅ Progress saved! (${photoCount} photo${photoCount !== 1 ? 's' : ''} stored)\n\nYou can close and return later.`);
+  } catch (e) {
+    console.error('Save error:', e);
+    alert('❌ Save failed. Please export the report instead to avoid data loss.');
+  }
+}
+
+async function loadProgress() {
+  const saved = await loadFromIndexedDB('solarSurvey');
+  if (!saved) return;
+
+  Object.keys(saved.inputs || {}).forEach(id => {
+    const element = document.getElementById(id);
+    if (!element) return;
+    if (element.type === 'checkbox') element.checked = !!saved.inputs[id];
+    else if (element.type !== 'file') element.value = saved.inputs[id];
+  });
+
+  Object.keys(saved.photos || {}).forEach(type => {
+    photos[type] = saved.photos[type] || [];
+    displayPhotos(type);
+  });
+
+  updateProgress();
+  updateConnectivityStatus();
+}
+
+function generateReport() {
+  const surveyData = {
+    meta: {
+      exportedAt: new Date().toISOString(),
+      onlineAtExport: navigator.onLine
+    },
+    siteInfo: {
+      siteName: document.getElementById('site-name').value,
+      tribalAffiliation: document.getElementById('tribal-affiliation').value,
+      siteAddress: document.getElementById('site-address').value,
+      cityStateZip: document.getElementById('city-state-zip').value,
+      gpsCoords: document.getElementById('gps-coords').value,
+      surveyDate: document.getElementById('survey-date').value,
+      surveyorName: document.getElementById('surveyor-name').value
+    },
+    roofInfo: {
+      roofType: document.getElementById('roof-type')?.value || '',
+      roofCondition: document.getElementById('roof-condition')?.value || '',
+      roofAge: document.getElementById('roof-age')?.value || '',
+      obstructions: {
+        chimneys: document.getElementById('obstruction-chimneys').checked,
+        vents: document.getElementById('obstruction-vents').checked,
+        skylights: document.getElementById('obstruction-skylights').checked,
+        trees: document.getElementById('obstruction-trees').checked
+      },
+      notes: document.getElementById('roof-notes').value,
+      photosCount: photos['roof-mounting'].length
+    },
+    electricalInfo: {
+      panelAmperage: document.getElementById('panel-amperage').value,
+      mainBreaker: document.getElementById('main-breaker').value,
+      availableSpaces: document.getElementById('available-spaces').value,
+      notes: document.getElementById('electrical-notes').value,
+      mainPanelPhotos: photos['main-panel'].length,
+      panelLabelPhotos: photos['panel-label'].length,
+      groundingPhotos: photos['grounding'].length
+    },
+    shadingInfo: {
+      shadingPercent: document.getElementById('shading-percent').value,
+      sources: {
+        trees: document.getElementById('shade-trees').checked,
+        buildings: document.getElementById('shade-buildings').checked,
+        mountains: document.getElementById('shade-mountains').checked,
+        none: document.getElementById('shade-none').checked
+      },
+      notes: document.getElementById('shading-notes').value,
+      photosCount: photos['shading'].length
+    },
+    recommendations: {
+      systemSizeKW: document.getElementById('system-size').value,
+      batteryIncluded: document.getElementById('battery-included').value,
+      batterySizeKWh: document.getElementById('battery-size').value,
+      notes: document.getElementById('system-notes').value
+    },
+    summary: {
+      overallAssessment: document.getElementById('overall-assessment').value,
+      recommendedSize: document.getElementById('recommended-size').value,
+      specialConsiderations: document.getElementById('special-considerations').value
+    },
+    uploadPrep: {
+      readyForUpload: document.getElementById('ready-for-upload').checked,
+      readyTimestamp: '',
+      uploadNotes: document.getElementById('upload-notes').value
+    },
+    photos: photos
+  };
+
+  const safeName = (surveyData.siteInfo.siteName || 'site').toString().trim().replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g,'');
+  const safeDate = (surveyData.siteInfo.surveyDate || '').toString().trim().replace(/\//g, '-') || new Date().toISOString().slice(0,10);
+  const fileName = `SolarSurvey_${safeName}_${safeDate}.json`;
+
+  const dataStr = JSON.stringify(surveyData, null, 2);
+  const dataBlob = new Blob([dataStr], {type: 'application/json'});
+  const url = URL.createObjectURL(dataBlob);
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
+
+  const clearAfter = document.getElementById('clear-after-export');
+  if (clearAfter && clearAfter.checked) {
+    silentClearSurvey().then(() => {
+      const photoCount = getTotalPhotoCount();
+      alert(`✅ Survey report generated!\n📁 File downloaded: ${fileName}\n🗑️ Form cleared`);
     });
+  } else {
+    alert(`✅ Survey report generated!\n📁 File downloaded: ${fileName}`);
+  }
+}
 
-    // Generate report (UPDATED: includes upload prep + fixes photo key)
-    function generateReport() {
-      const readyTimestamp = localStorage.getItem('solarSurveyReadyTimestamp') || '';
+async function clearSurvey() {
+  if (confirm('Are you sure you want to clear all survey data? This cannot be undone.')) {
+    await silentClearSurvey();
+    alert('Survey cleared!');
+  }
+}
 
-      const surveyData = {
-        meta: {
-          exportedAt: new Date().toISOString(),
-          onlineAtExport: navigator.onLine
-        },
-        siteInfo: {
-          siteName: document.getElementById('site-name').value,
-          tribalAffiliation: document.getElementById('tribal-affiliation').value,
-          siteAddress: document.getElementById('site-address').value,
-          cityStateZip: document.getElementById('city-state-zip').value,
-          gpsCoords: document.getElementById('gps-coords').value,
-          surveyDate: document.getElementById('survey-date').value,
-          surveyorName: document.getElementById('surveyor-name').value
-        },
-        roofInfo: {
-          roofType: document.getElementById('roof-type')?.value || '',
-          roofCondition: document.getElementById('roof-condition')?.value || '',
-          roofAge: document.getElementById('roof-age')?.value || '',
-          obstructions: {
-            chimneys: document.getElementById('obstruction-chimneys').checked,
-            vents: document.getElementById('obstruction-vents').checked,
-            skylights: document.getElementById('obstruction-skylights').checked,
-            trees: document.getElementById('obstruction-trees').checked
-          },
-          notes: document.getElementById('roof-notes').value,
-          photosCount: photos['roof-mounting'].length
-        },
-        electricalInfo: {
-          panelAmperage: document.getElementById('panel-amperage').value,
-          mainBreaker: document.getElementById('main-breaker').value,
-          availableSpaces: document.getElementById('available-spaces').value,
-          notes: document.getElementById('electrical-notes').value,
-          mainPanelPhotos: photos['main-panel'].length,
-          panelLabelPhotos: photos['panel-label'].length,
-          groundingPhotos: photos['grounding'].length
-        },
-        shadingInfo: {
-          shadingPercent: document.getElementById('shading-percent').value,
-          sources: {
-            trees: document.getElementById('shade-trees').checked,
-            buildings: document.getElementById('shade-buildings').checked,
-            mountains: document.getElementById('shade-mountains').checked,
-            none: document.getElementById('shade-none').checked
-          },
-          notes: document.getElementById('shading-notes').value,
-          photosCount: photos['shading'].length
-        },
-        recommendations: {
-          systemSizeKW: document.getElementById('system-size').value,
-          batteryIncluded: document.getElementById('battery-included').value,
-          batterySizeKWh: document.getElementById('battery-size').value,
-          notes: document.getElementById('system-notes').value
-        },
-        summary: {
-          overallAssessment: document.getElementById('overall-assessment').value,
-          recommendedSize: document.getElementById('recommended-size').value,
-          specialConsiderations: document.getElementById('special-considerations').value
-        },
-        uploadPrep: {
-          readyForUpload: document.getElementById('ready-for-upload').checked,
-          readyTimestamp: readyTimestamp,
-          uploadNotes: document.getElementById('upload-notes').value
-        },
-        photos: photos
-      };
+async function silentClearSurvey() {
+  document.querySelectorAll('input, select, textarea').forEach(element => {
+    if (element.type === 'checkbox') element.checked = false;
+    else if (element.type !== 'file') element.value = '';
+  });
 
-      // Create downloadable JSON file
-      const safeName = (surveyData.siteInfo.siteName || 'site').toString().trim().replace(/[^a-z0-9]+/gi, '-');
-      const dataStr = JSON.stringify(surveyData, null, 2);
-      const dataBlob = new Blob([dataStr], {type: 'application/json'});
-      const url = URL.createObjectURL(dataBlob);
+  Object.keys(photos).forEach(type => {
+    photos[type] = [];
+    displayPhotos(type);
+  });
 
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `solar-survey-${safeName}-${Date.now()}.json`;
-      link.click();
+  await deleteFromIndexedDB('solarSurvey');
+  await deleteFromIndexedDB('solarSurveyReadyTimestamp');
 
-      // Optional auto-clear after export (ADDED)
-      const clearAfter = document.getElementById('clear-after-export');
-      if (clearAfter && clearAfter.checked) {
-        silentClearSurvey();
-      }
-
-      alert('Survey report generated! Check your downloads folder.');
-    }
-
-    // Save progress to localStorage
-    function saveProgress() {
-      const allData = { inputs: {}, photos: photos };
-
-      document.querySelectorAll('input, select, textarea').forEach(element => {
-        if (!element.id) return;
-        if (element.type === 'checkbox') allData.inputs[element.id] = element.checked;
-        else if (element.type !== 'file') allData.inputs[element.id] = element.value;
-      });
-
-      localStorage.setItem('solarSurvey', JSON.stringify(allData));
-      alert('Progress saved! Your data will be here when you return.');
-    }
-
-    // Load progress from localStorage
-    function loadProgress() {
-      const saved = localStorage.getItem('solarSurvey');
-      if (saved) {
-        const data = JSON.parse(saved);
-
-        Object.keys(data.inputs || {}).forEach(id => {
-          const element = document.getElementById(id);
-          if (!element) return;
-          if (element.type === 'checkbox') element.checked = !!data.inputs[id];
-          else if (element.type !== 'file') element.value = data.inputs[id];
-        });
-
-        Object.keys(data.photos || {}).forEach(type => {
-          photos[type] = data.photos[type] || [];
-          displayPhotos(type);
-        });
-
-        // Restore ready timestamp UI (ADDED)
-        const readyBox = document.getElementById('ready-for-upload');
-        const readyTs = document.getElementById('ready-timestamp');
-        const savedReady = localStorage.getItem('solarSurveyReadyTimestamp');
-        if (readyBox && readyTs) {
-          if (savedReady) {
-            readyBox.checked = true;
-            readyTs.textContent = 'Marked ready on: ' + new Date(savedReady).toLocaleString();
-          } else {
-            readyBox.checked = false;
-            readyTs.textContent = '';
-          }
-        }
-
-        updateProgress();
-      }
-    }
-
-    // Clear survey (kept confirm)
-    function clearSurvey() {
-      if (confirm('Are you sure you want to clear all survey data? This cannot be undone.')) {
-        silentClearSurvey();
-        alert('Survey cleared!');
-      }
-    }
-
-    // Silent clear (ADDED so export can clear without extra confirm)
-    function silentClearSurvey() {
-      document.querySelectorAll('input, select, textarea').forEach(element => {
-        if (element.type === 'checkbox') element.checked = false;
-        else if (element.type !== 'file') element.value = '';
-      });
-
-      Object.keys(photos).forEach(type => {
-        photos[type] = [];
-        displayPhotos(type);
-      });
-
-      localStorage.removeItem('solarSurvey');
-      localStorage.removeItem('solarSurveyReadyTimestamp');
-
-      document.getElementById('survey-date').value = new Date().toLocaleDateString();
-      updateProgress();
-    }
-
-    // Ready-for-upload timestamp (ADDED)
-    (function initReadyForUpload() {
-      const readyBox = document.getElementById('ready-for-upload');
-      const readyTs = document.getElementById('ready-timestamp');
-      if (!readyBox || !readyTs) return;
-
-      const savedReady = localStorage.getItem('solarSurveyReadyTimestamp');
-      if (savedReady) readyTs.textContent = 'Marked ready on: ' + new Date(savedReady).toLocaleString();
-
-      readyBox.addEventListener('change', () => {
-        if (readyBox.checked) {
-          const ts = new Date().toISOString();
-          localStorage.setItem('solarSurveyReadyTimestamp', ts);
-          readyTs.textContent = 'Marked ready on: ' + new Date(ts).toLocaleString();
-        } else {
-          localStorage.removeItem('solarSurveyReadyTimestamp');
-          readyTs.textContent = '';
-        }
-      });
-    })();
-
-    // Load saved data on page load
-    window.addEventListener('load', function() {
-      updateConnectivityStatus();
-      loadProgress();
-      updateProgress();
-    });
-  </script>
+  document.getElementById('survey-date').value = new Date().toLocaleDateString();
+  
+  // Reset ready checkbox
+  const readyBox = document.getElementById('ready-for-upload');
+  const readyTs = document.getElementById('ready-timestamp');
+  if (readyBox) readyBox.checked = false;
+  if (readyTs) readyTs.textContent = '';
+  
+  updateProgress();
+  updateConnectivityStatus();
+}
+</script>
 </body>
 </html>
 
