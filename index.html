@@ -21,9 +21,23 @@
 
     body{
       font-family:'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: linear-gradient(135deg, #FFF8E1 0%, #FFE0B2 100%);
+      background: url('images/Buff_Back.jpg') center center fixed;
+      background-size: cover;
+      position: relative;
       min-height:100vh;
       color:var(--text-primary);
+    }
+
+    /* Subtle overlay for readability */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255, 248, 225, 0.75);
+      z-index: -1;
     }
 
     /* Header */
@@ -114,12 +128,12 @@
       transition:width 0.3s ease;
     }
 
-    /* Sections */
+    /* Sections - Enhanced shadow for visibility against background */
     .section{
       background:white;
       border-radius:16px;
       margin-bottom:24px;
-      box-shadow:0 4px 16px rgba(0,0,0,0.12);
+      box-shadow:0 6px 20px rgba(0,0,0,0.15);
       overflow:hidden;
     }
 
