@@ -375,10 +375,194 @@
         height: 32px;
     }
 }
+/* Safety Disclaimer Modal */
+    .safety-modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+    }
+    .safety-modal-overlay.hidden { display: none; }
+    .safety-modal {
+      background: white;
+      border-radius: 16px;
+      padding: 32px;
+      max-width: 600px;
+      width: 90%;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+    .safety-modal-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .safety-modal-header h2 {
+      color: var(--warning);
+      font-size: 24px;
+      font-weight: 700;
+      margin: 0;
+    }
+    .safety-modal-content {
+      font-size: 16px;
+      line-height: 1.6;
+      color: var(--text-primary);
+      margin-bottom: 24px;
+    }
+    .safety-modal-content p { margin-bottom: 16px; }
+    .safety-modal-content ul {
+      list-style: none;
+      padding-left: 0;
+      margin: 12px 0;
+    }
+    .safety-modal-content ul li {
+      padding: 8px 0;
+      padding-left: 28px;
+      position: relative;
+    }
+    .safety-modal-content ul li:before {
+      content: "✗";
+      position: absolute;
+      left: 0;
+      color: #C62828;
+      font-weight: bold;
+      font-size: 18px;
+    }
+    .safety-modal-agree {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px;
+      background: #FFF8E1;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border: 2px solid var(--warning);
+    }
+    .safety-modal-agree input[type="checkbox"] {
+      width: 24px;
+      height: 24px;
+      cursor: pointer;
+    }
+    .safety-modal-agree label {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+      cursor: pointer;
+      margin: 0;
+    }
+    .safety-modal-button {
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      color: white;
+      border: none;
+      padding: 14px 32px;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      transition: all 0.2s;
+      font-family: 'Inter', sans-serif;
+    }
+    .safety-modal-button:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    }
+    .safety-modal-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    /* Safety Warning Bar (minimized) */
+    .safety-warning-bar {
+      background: linear-gradient(135deg, var(--warning) 0%, #E65100 100%);
+      color: white;
+      padding: 12px 24px;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      position: sticky;
+      top: 0;
+      z-index: 99;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .safety-warning-bar:hover {
+      background: linear-gradient(135deg, #E65100 0%, var(--warning) 100%);
+    }
+    .safety-warning-bar.visible { display: flex; }
+    .safety-warning-text {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .safety-warning-icon { font-size: 18px; }
+    .safety-warning-link {
+      font-size: 13px;
+      text-decoration: underline;
+      opacity: 0.9;
+    }
+    @media (max-width:768px){
+      .safety-modal { padding: 24px; }
+      .safety-warning-bar {
+        flex-direction: column;
+        gap: 8px;
+        text-align: center;
+      }
+    }
 </style>
 </head>
 
 <body>
+  <!-- Safety Disclaimer Modal -->
+  <div class="safety-modal-overlay" id="safetyModal">
+    <div class="safety-modal">
+      <div class="safety-modal-header">
+        <span style="font-size: 32px;">⚠️</span>
+        <h2>SAFETY DISCLAIMER</h2>
+      </div>
+      
+      <div class="safety-modal-content">
+        <p><strong>This survey form can be completed safely from the ground and outside electrical panels.</strong></p>
+        
+        <p><strong>DO NOT:</strong></p>
+        <ul>
+          <li>Open electrical panels unless you are a licensed electrician</li>
+          <li>Climb on roofs unless you are trained and have proper fall protection PPE</li>
+          <li>Put yourself in any dangerous situation to complete this form</li>
+        </ul>
+        
+        <p style="margin-top: 20px;"><strong>You are responsible for your own safety. Indigenized Energy is not liable for any injuries that occur during site surveys.</strong></p>
+      </div>
+
+      <div class="safety-modal-agree">
+        <input type="checkbox" id="safetyAgree" />
+        <label for="safetyAgree">I understand and will work safely</label>
+      </div>
+
+      <button class="safety-modal-button" id="safetyProceed" disabled>
+        Proceed to Survey Form
+      </button>
+    </div>
+  </div>
+
+  <!-- Safety Warning Bar (Minimized) -->
+  <div class="safety-warning-bar" id="safetyBar" onclick="reopenSafetyModal()">
+    <div class="safety-warning-text">
+      <span class="safety-warning-icon">⚠️</span>
+      <span>Safety Acknowledged</span>
+    </div>
+    <span class="safety-warning-link">Click to review</span>
+  </div>
   <!-- Professional Header -->
   <div class="app-header">
     <div class="header-content">
@@ -894,6 +1078,46 @@
   </div>
 
  <script>
+  // ============================================
+// Safety Disclaimer Logic
+// ============================================
+let safetyAcknowledged = false;
+let safetyAcknowledgedTimestamp = null;
+
+function checkSafetyAcknowledgement() {
+  const stored = localStorage.getItem('safetyAcknowledged');
+  if (stored) {
+    const data = JSON.parse(stored);
+    safetyAcknowledged = true;
+    safetyAcknowledgedTimestamp = data.timestamp;
+    document.getElementById('safetyModal').classList.add('hidden');
+    document.getElementById('safetyBar').classList.add('visible');
+  }
+}
+
+document.getElementById('safetyAgree').addEventListener('change', function() {
+  document.getElementById('safetyProceed').disabled = !this.checked;
+});
+
+document.getElementById('safetyProceed').addEventListener('click', function() {
+  safetyAcknowledgedTimestamp = new Date().toISOString();
+  safetyAcknowledged = true;
+  
+  localStorage.setItem('safetyAcknowledged', JSON.stringify({
+    acknowledged: true,
+    timestamp: safetyAcknowledgedTimestamp
+  }));
+  
+  document.getElementById('safetyModal').classList.add('hidden');
+  document.getElementById('safetyBar').classList.add('visible');
+});
+
+function reopenSafetyModal() {
+  document.getElementById('safetyModal').classList.remove('hidden');
+}
+
+// Check on load
+checkSafetyAcknowledgement();
 // ============================================
 // IndexedDB Helper (replaces localStorage)
 // ============================================
@@ -1512,7 +1736,12 @@ function generateReport() {
       readyTimestamp: '',
       uploadNotes: document.getElementById('upload-notes').value
     },
-    photos: photos
+    photos: photos,
+    safetyDisclaimer: {
+      acknowledged: safetyAcknowledged,
+      acknowledgedAt: safetyAcknowledgedTimestamp,
+      disclaimerText: "This survey form can be completed safely from the ground and outside electrical panels. DO NOT: Open electrical panels unless you are a licensed electrician. Climb on roofs unless you are trained and have proper fall protection PPE. Put yourself in any dangerous situation to complete this form. You are responsible for your own safety. Indigenized Energy is not liable for any injuries that occur during site surveys."
+    }
   };
 
   const safeName = (surveyData.siteInfo.siteName || 'site').toString().trim().replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g,'');
@@ -1574,4 +1803,6 @@ async function silentClearSurvey() {
 </script>
 </body>
 </html>
+
+
 
