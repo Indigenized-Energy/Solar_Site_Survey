@@ -543,7 +543,12 @@
         
         <p style="margin-top: 20px;"><strong>You are responsible for your own safety. Indigenized Energy is not liable for any injuries that occur during site surveys.</strong></p>
       </div>
-
+      
+        <div style="margin-bottom: 20px;">
+        <label style="display: block; font-weight: 600; margin-bottom: 8px; font-size: 15px;">Your Full Name *</label>
+        <input type="text" id="safetyName" placeholder="Enter your full name" style="width: 100%; padding: 12px; border: 2px solid #E0E0E0; border-radius: 8px; font-size: 15px; font-family: 'Inter', sans-serif;">
+      </div>
+      
       <div class="safety-modal-agree">
         <input type="checkbox" id="safetyAgree" />
         <label for="safetyAgree">I understand and will work safely</label>
@@ -1089,15 +1094,27 @@ function checkSafetyAcknowledgement() {
   // Modal stays visible on every page load
 }
 
-document.getElementById('safetyAgree').addEventListener('change', function() {
-  document.getElementById('safetyProceed').disabled = !this.checked;
-});
+function checkSafetyProceedButton() {
+  const agreed = document.getElementById('safetyAgree').checked;
+  const name = document.getElementById('safetyName').value.trim();
+  document.getElementById('safetyProceed').disabled = !(agreed && name.length > 0);
+}
+
+document.getElementById('safetyAgree').addEventListener('change', checkSafetyProceedButton);
+document.getElementById('safetyName').addEventListener('input', checkSafetyProceedButton);
+
+let safetyAcknowledgedName = null;  // Add this at the top with other safety variables
 
 document.getElementById('safetyProceed').addEventListener('click', function() {
   safetyAcknowledgedTimestamp = new Date().toISOString();
   safetyAcknowledged = true;
+  safetyAcknowledgedName = document.getElementById('safetyName').value.trim();
   
-  // Don't save to localStorage - they'll need to agree every time
+  localStorage.setItem('safetyAcknowledged', JSON.stringify({
+    acknowledged: true,
+    name: safetyAcknowledgedName,
+    timestamp: safetyAcknowledgedTimestamp
+  }));
   
   document.getElementById('safetyModal').classList.add('hidden');
   document.getElementById('safetyBar').classList.add('visible');
@@ -1730,9 +1747,10 @@ function generateReport() {
     photos: photos,
     safetyDisclaimer: {
       acknowledged: safetyAcknowledged,
+      acknowledgedBy: safetyAcknowledgedName,
       acknowledgedAt: safetyAcknowledgedTimestamp,
       disclaimerText: "This survey form can be completed safely from the ground and outside electrical panels. DO NOT: Open electrical panels unless you are a licensed electrician. Climb on roofs unless you are trained and have proper fall protection PPE. Put yourself in any dangerous situation to complete this form. You are responsible for your own safety. Indigenized Energy is not liable for any injuries that occur during site surveys."
-    }
+    },
   };
 
   const safeName = (surveyData.siteInfo.siteName || 'site').toString().trim().replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g,'');
